@@ -12,7 +12,7 @@ def resolve_property_name(
         result = name
     else:
         prop, ns = name
-        namespace = onto.get_namespace(ns)
+        namespace : owlready2.Namespace = onto.get_namespace(ns)
         result = namespace[prop].name
 
     return result
@@ -215,8 +215,11 @@ class Mapper[S, T]:
             classname, ns = self.target_class
             namespace = self.ontology.get_namespace(ns)
             target_class = namespace[classname]
-        except TypeError:  # an actual owlready2 class was passed
-            target_class = self.target_class
+        except (TypeError, ValueError):  # an actual owlready2 class was passed
+            if isinstance(self.target_class, owlready2.ThingClass):
+                target_class = self.target_class
+            else:
+                target_class = self.ontology[self.target_class]
 
         search_result = self.ontology.search_one(type=target_class, **search_args)
         if search_result:

@@ -8,7 +8,13 @@ decoupled.
 
 # Quickstart
 
-Define an Ontology, using owlready2 or your tool of choice:
+First install `owlready2`:
+
+```
+pip insall owlready2
+```
+
+Then define an Ontology, using owlready2 or your tool of choice:
 
 ```python
 onto = owlready2.get_ontology("http://example.org/")

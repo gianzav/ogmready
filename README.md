@@ -71,7 +71,10 @@ class DogMapper(Mapper):
             # Data property, functional by default
             "id": DataPropertyMapping("id", primary_key=True),
             "name": DataPropertyMapping("name"),
+
             # functional = False means that the property is a Set
+            # we can pass a tuple (name, namespace) to say that a name is in a
+            # different namespace than the default one
             "colors": DataPropertyMapping(("color", other_namespace), functional=False)
         }
         # Specify the domain and ontology classes to perfom the mapping
@@ -133,7 +136,7 @@ intermediate element like `a_in_L` is needed because we could have more
 occurrences of `a` inside of `L`. Moreover, with `index` we can express the
 order of the elements.
 
-In ogmready, an example could be (using `""http://purl.org/co/""`, the
+In ogmready, an example could be (using `"http://purl.org/co/"`, the
 Collections ontology):
 
 ```python
@@ -141,13 +144,18 @@ Collections ontology):
 class Person:
     friends: List[Person]
 
-
 class PersonMapper:
     def __init__(self, ontology):
         co = "http://purl.org/co/"
         mappings = {
+            # the parameters are:
+            # - relation to connect list to items (e.g. 'item')
+            # - OWL class of the connecting item (e.g. 'ListItem')
+            # - relation to get to the actual item (e.g. 'itemContent')
+            # - mapper for the item contents
+            # - property to express the ordering of the elements
             "friends": ListMapping(("item", co), ("ListItem", co), ("itemContent", co),
-                                   lambda: PersonMapper(ontology))
+                                   lambda: PersonMapper(ontology), ("index", co))
         }
         super().__init__(Person, "Person", mappings, ontology)
 ```
@@ -173,3 +181,13 @@ referenced objects based on the fields that were specified as `primary_key`, but
 in case no `primary_key` is defined, it defaults to a deep search (search of
 *all* object fields inside the Knowledge Graph), which could become slow and in
 certain cases it could loop if there are circular references.
+
+
+# Missing features (contributions are welcome!)
+
+- [ ] Allowing the use of multiple mappers for a field, e.g. for `friend: Person
+  | Dog` it would be nice to say "use `PersonMapper` or `DogMapper`" based on
+what you find
+- [ ] Slim down the definition of new mappers. Using a dict for `mappings` seems
+  a bit wonky to me, it could be done better maybe with class variables to make
+  the code more readable

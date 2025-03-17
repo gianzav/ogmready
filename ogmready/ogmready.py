@@ -11,11 +11,28 @@ def resolve_property_name(
     if isinstance(name, str):
         result = name
     else:
-        prop, ns = name
-        namespace : owlready2.Namespace = onto.get_namespace(ns)
-        result = namespace[prop].name
+        try:
+            prop, ns = name
+            namespace: owlready2.Namespace = onto.get_namespace(ns)
+            result = namespace[prop].name
+        except AttributeError as e:
+            print(f"Property {prop} not found in namespace {ns}")
+            raise e
 
     return result
+
+
+def resolve_class(
+    name: NameWithNamespace, onto: owlready2.Ontology
+) -> owlready2.ThingClass:
+    try:
+        prop, ns = name
+        namespace: owlready2.Namespace = onto.get_namespace(ns)
+        result = namespace[prop]
+        return result
+    except AttributeError as e:
+        print(f"Property {prop} not found in namespace {ns}")
+        raise e
 
 
 class Mapping:
@@ -116,7 +133,7 @@ class ListMapping(Mapping):
     def __init__(
         self,
         relation: str | NameWithNamespace,
-        pivot_class: str | NameWithNamespace,
+        pivot_class: NameWithNamespace,
         connection_to_item: str | NameWithNamespace,
         item_mapper_maker: Callable[[], "Mapper"],
         index_property: str | NameWithNamespace = "sequence_number",
@@ -140,11 +157,19 @@ class ListMapping(Mapping):
             "index_property": self.index_property,
         }
         for prop_name, value in properties.items():
-            properties[prop_name] = resolve_property_name(value, onto)
+            if prop_name != "pivot_class":
+                properties[prop_name] = resolve_property_name(value, onto)
+            else:
+                properties["pivot_class"] = resolve_class(value, onto)
+
+        assert properties["relation"] is not None
+        assert properties["pivot_class"] is not None
+        assert properties["connection_to_item"] is not None
+        assert properties["index_property"] is not None
 
         mapper = self.item_mapper_maker()
         elements = getattr(obj, property_name)
-        pivots = [onto[properties["pivot_class"]]() for e in elements]
+        pivots = [properties["pivot_class"]() for e in elements]
 
         for i, (element, pivot) in enumerate(zip(elements, pivots)):
             setattr(pivot, properties["connection_to_item"], mapper.to_owl(element))
@@ -160,7 +185,15 @@ class ListMapping(Mapping):
             "index_property": self.index_property,
         }
         for prop_name, value in properties.items():
-            properties[prop_name] = resolve_property_name(value, onto)
+            if prop_name != "pivot_class":
+                properties[prop_name] = resolve_property_name(value, onto)
+            else:
+                properties["pivot_class"] = resolve_class(value, onto)
+
+        assert properties["relation"] is not None
+        assert properties["pivot_class"] is not None
+        assert properties["connection_to_item"] is not None
+        assert properties["index_property"] is not None
 
         mapper = self.item_mapper_maker()
         pivots = sorted(
@@ -192,6 +225,9 @@ class Mapper[S, T]:
         self.ontology = ontology
 
     def to_owl(self, obj: S) -> T:
+        if obj is None:
+            return None
+
         search_args = {}
         mappings = self.mappings
 
@@ -233,6 +269,9 @@ class Mapper[S, T]:
         return owl_instance
 
     def from_owl(self, owl_instance: T) -> S:
+        if owl_instance is None:
+            return None
+
         kwargs = {}
 
         for property_name, mapping in self.mappings.items():

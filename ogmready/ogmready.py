@@ -63,10 +63,12 @@ class DataPropertyMapping(Mapping):
         target_property: str | NameWithNamespace,
         functional=True,
         primary_key=False,
+        default_factory: None | Callable = None,
     ):
         self.target_property = target_property
         self.functional = functional
         self.primary_key = primary_key
+        self.default_factory = default_factory
 
     def to_owl(self, owl_instance, obj, property_name, onto, update=False):
         # update doesn't make a difference for data properties
@@ -81,10 +83,19 @@ class DataPropertyMapping(Mapping):
 
     def from_owl(self, owl_instance, onto):
         target_property = resolve_property_name(self.target_property, onto)
-        if self.functional:
-            target = getattr(owl_instance, target_property)
+
+        if hasattr(owl_instance, target_property):
+            if self.functional:
+                target = getattr(owl_instance, target_property)
+            else:
+                target = set(getattr(owl_instance, target_property))
+        elif self.default_factory:
+            target = self.default_factory()
         else:
-            target = set(getattr(owl_instance, target_property))
+            raise AttributeError(
+                f"{target_property} not present for {owl_instance.name}, and no default has been provided."
+            )
+
         return target
 
     def to_query(self, obj, property_name, onto):
@@ -113,10 +124,12 @@ class ObjectPropertyMapping(Mapping):
         relation: str | NameWithNamespace,
         mapper_maker: Callable[[], "Mapper"],
         functional=True,
+        default_factory: None | Callable = None,
     ):
         self.relation = relation
         self.mapper_maker = mapper_maker
         self.functional = functional
+        self.default_factory = default_factory
 
     def to_owl(self, owl_instance, obj, property_name, onto, update=False):
         # update doesn't make a difference
@@ -133,10 +146,19 @@ class ObjectPropertyMapping(Mapping):
     def from_owl(self, owl_instance, onto):
         mapper = self.mapper_maker()
         relation = resolve_property_name(self.relation, onto)
-        if self.functional:
-            target = mapper.from_owl(getattr(owl_instance, relation))
+
+        if hasattr(owl_instance, relation):
+            if self.functional:
+                target = mapper.from_owl(getattr(owl_instance, relation))
+            else:
+                target = {mapper.from_owl(e) for e in getattr(owl_instance, relation)}
+        elif self.default_factory:
+            target = self.default_factory()
         else:
-            target = {mapper.from_owl(e) for e in getattr(owl_instance, relation)}
+            raise AttributeError(
+                f"{relation} not present for {owl_instance.name}, and no default has been provided."
+            )
+
         return target
 
     def to_query(self, obj, property_name, onto):
@@ -164,14 +186,15 @@ class ListMapping(Mapping):
         connection_to_item: str | NameWithNamespace,
         item_mapper_maker: Callable[[], "Mapper"],
         index_property: str | NameWithNamespace = "sequence_number",
+        default_factory: None | Callable = None,
     ):
 
         self.relation = relation
         self.pivot_class = pivot_class
         self.connection_to_item = connection_to_item
         self.index_property = index_property
-
         self.item_mapper_maker = item_mapper_maker
+        self.default_factory = default_factory
 
     def _resolve_properties(self, onto):
         properties = {
@@ -219,14 +242,22 @@ class ListMapping(Mapping):
     def from_owl(self, owl_instance, onto):
         properties = self._resolve_properties(onto)
         mapper = self.item_mapper_maker()
-        pivots = sorted(
-            getattr(owl_instance, properties["relation"]),
-            key=lambda o: getattr(o, properties["index_property"]),
-        )
-        elements = [
-            getattr(pivot, properties["connection_to_item"]) for pivot in pivots
-        ]
-        return [mapper.from_owl(e) for e in elements]
+
+        if hasattr(owl_instance, properties["relation"]):
+            pivots = sorted(
+                getattr(owl_instance, properties["relation"]),
+                key=lambda o: getattr(o, properties["index_property"]),
+            )
+            elements = [
+                getattr(pivot, properties["connection_to_item"]) for pivot in pivots
+            ]
+            return [mapper.from_owl(e) for e in elements]
+        elif self.default_factory:
+            return self.default_factory()
+        else:
+            raise AttributeError(
+                f"{properties['relation']} not present for {owl_instance.name}, and no default has been provided."
+            )
 
     def delete(self, owl_instance, property_name, onto: owlready2.Ontology):
         # Resolve properties and classes
@@ -326,8 +357,10 @@ class Mapper[S, T]:
 
         if isinstance(obj, self.source_class):
             # search if the wanted instance is already present
-            target_class, search_args = self.to_query(obj)
-            search_result = self.ontology.search_one(type=target_class, **search_args)
+            search_args = self.to_query(obj)
+            search_result = self.ontology.search_one(
+                type=self.target_class, **search_args
+            )
             if search_result:
                 owl_instance = search_result
         elif isinstance(obj, self.target_class):

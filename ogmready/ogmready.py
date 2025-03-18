@@ -1,5 +1,5 @@
 from logging import warning
-from typing import Any, Callable, Dict, Tuple, Type, TypeVar
+from typing import Any, Callable, Dict, Iterable, Tuple, Type, TypeVar
 import owlready2
 
 type NameWithNamespace = Tuple[str, str]
@@ -36,7 +36,9 @@ def resolve_class(
 
 
 class Mapping:
-    def to_owl(self, owl_instance, obj, property_name, onto: owlready2.Ontology):
+    def to_owl(
+        self, owl_instance, obj, property_name, onto: owlready2.Ontology, update=False
+    ):
         raise NotImplementedError
 
     def from_owl(self, owl_instance, onto: owlready2.Ontology):
@@ -47,6 +49,12 @@ class Mapping:
 
     def is_primary_key(self):
         return False
+
+    def delete(self, owl_instance, property_name, onto: owlready2.Ontology):
+        """
+        Deletes the data associated with this mapping from the ontology.
+        """
+        raise NotImplementedError
 
 
 class DataPropertyMapping(Mapping):
@@ -60,7 +68,9 @@ class DataPropertyMapping(Mapping):
         self.functional = functional
         self.primary_key = primary_key
 
-    def to_owl(self, owl_instance, obj, property_name, onto):
+    def to_owl(self, owl_instance, obj, property_name, onto, update=False):
+        # update doesn't make a difference for data properties
+
         target_property = resolve_property_name(self.target_property, onto)
         if self.functional:
             target = getattr(obj, property_name)
@@ -88,6 +98,14 @@ class DataPropertyMapping(Mapping):
     def is_primary_key(self):
         return self.primary_key
 
+    def delete(self, owl_instance, property_name, onto: owlready2.Ontology):
+        # Resolve the target property
+        target_property = resolve_property_name(self.target_property, onto)
+
+        # Remove the property value from the OWL individual
+        if hasattr(owl_instance, target_property):
+            delattr(owl_instance, target_property)
+
 
 class ObjectPropertyMapping(Mapping):
     def __init__(
@@ -100,14 +118,15 @@ class ObjectPropertyMapping(Mapping):
         self.mapper_maker = mapper_maker
         self.functional = functional
 
-    def to_owl(self, owl_instance, obj, property_name, onto):
+    def to_owl(self, owl_instance, obj, property_name, onto, update=False):
+        # update doesn't make a difference
         mapper = self.mapper_maker()
         relation = resolve_property_name(self.relation, onto)
 
         if self.functional:
-            target = mapper.to_owl(getattr(obj, property_name))
+            target = mapper.to_owl(getattr(obj, property_name, update))
         else:
-            target = [mapper.to_owl(e) for e in getattr(obj, property_name)]
+            target = [mapper.to_owl(e, update) for e in getattr(obj, property_name)]
 
         setattr(owl_instance, relation, target)
 
@@ -128,6 +147,14 @@ class ObjectPropertyMapping(Mapping):
             target = [mapper.to_owl(e) for e in getattr(obj, property_name)]
         return resolve_property_name(self.relation, onto), target
 
+    def delete(self, owl_instance, property_name, onto: owlready2.Ontology):
+        # Resolve the relation (object property)
+        relation = resolve_property_name(self.relation, onto)
+
+        # Remove the object property value
+        if hasattr(owl_instance, relation):
+            delattr(owl_instance, relation)
+
 
 class ListMapping(Mapping):
     def __init__(
@@ -146,10 +173,7 @@ class ListMapping(Mapping):
 
         self.item_mapper_maker = item_mapper_maker
 
-    def to_owl(self, owl_instance, obj, property_name, onto):
-        if onto is None:
-            raise ValueError("onto parameter shouldn't be None for ListMapping")
-
+    def _resolve_properties(self, onto):
         properties = {
             "relation": self.relation,
             "pivot_class": self.pivot_class,
@@ -167,34 +191,33 @@ class ListMapping(Mapping):
         assert properties["connection_to_item"] is not None
         assert properties["index_property"] is not None
 
+        return properties
+
+    def to_owl(self, owl_instance, obj, property_name, onto, update=False):
+        if onto is None:
+            raise ValueError("onto parameter shouldn't be None for ListMapping")
+
+        properties = self._resolve_properties(onto)
         mapper = self.item_mapper_maker()
         elements = getattr(obj, property_name)
+
+        if update:
+            # delete the previous pivots
+            for pivot in getattr(owl_instance, properties["relation"]):
+                owlready2.destroy_entity(pivot)
+
         pivots = [properties["pivot_class"]() for e in elements]
 
         for i, (element, pivot) in enumerate(zip(elements, pivots)):
-            setattr(pivot, properties["connection_to_item"], mapper.to_owl(element))
+            setattr(
+                pivot, properties["connection_to_item"], mapper.to_owl(element, update)
+            )
             setattr(pivot, properties["index_property"], i)
 
         setattr(owl_instance, properties["relation"], pivots)
 
     def from_owl(self, owl_instance, onto):
-        properties = {
-            "relation": self.relation,
-            "pivot_class": self.pivot_class,
-            "connection_to_item": self.connection_to_item,
-            "index_property": self.index_property,
-        }
-        for prop_name, value in properties.items():
-            if prop_name != "pivot_class":
-                properties[prop_name] = resolve_property_name(value, onto)
-            else:
-                properties["pivot_class"] = resolve_class(value, onto)
-
-        assert properties["relation"] is not None
-        assert properties["pivot_class"] is not None
-        assert properties["connection_to_item"] is not None
-        assert properties["index_property"] is not None
-
+        properties = self._resolve_properties(onto)
         mapper = self.item_mapper_maker()
         pivots = sorted(
             getattr(owl_instance, properties["relation"]),
@@ -204,6 +227,20 @@ class ListMapping(Mapping):
             getattr(pivot, properties["connection_to_item"]) for pivot in pivots
         ]
         return [mapper.from_owl(e) for e in elements]
+
+    def delete(self, owl_instance, property_name, onto: owlready2.Ontology):
+        # Resolve properties and classes
+        properties = self._resolve_properties(onto)
+        # Retrieve existing pivots
+        pivots = getattr(owl_instance, properties["relation"], [])
+
+        # Destroy all pivot elements
+        for pivot in pivots:
+            owlready2.destroy_entity(pivot)
+
+        # Remove the relation from the OWL individual
+        if hasattr(owl_instance, properties["relation"]):
+            delattr(owl_instance, properties["relation"])
 
 
 S = TypeVar("S")
@@ -220,17 +257,52 @@ class Mapper[S, T]:
         ontology,
     ):
         self.source_class = source_class
-        self.target_class = target_class
+        if isinstance(target_class, tuple):
+            self.target_class = resolve_class(target_class, ontology)
+        else:
+            self.target_class = target_class
         self.mappings = mappings
         self.ontology = ontology
 
-    def to_owl(self, obj: S) -> T:
+    def to_owl(self, obj: S, update=False) -> T:
         if obj is None:
             return None
 
-        search_args = {}
-        mappings = self.mappings
+        # search if the wanted instance is already present
+        search_args = self.to_query(obj)
+        search_result = self.ontology.search_one(type=self.target_class, **search_args)
+        if search_result:
+            owl_instance = search_result
+            if update:
+                for property_name, mapping in self.mappings.items():
+                    mapping.to_owl(
+                        owl_instance, obj, property_name, self.ontology, update
+                    )
+        else:
+            # otherwise create a new one
+            owl_instance = self.target_class()
 
+        # apply the mappings only if a new instance has been created or it has to be updated
+        if update or (not search_result):
+            for property_name, mapping in self.mappings.items():
+                mapping.to_owl(owl_instance, obj, property_name, self.ontology, update)
+
+        return owl_instance
+
+    def from_owl(self, owl_instance: T) -> S:
+        if owl_instance is None:
+            return None
+
+        kwargs = {}
+
+        for property_name, mapping in self.mappings.items():
+            kwargs[property_name] = mapping.from_owl(owl_instance, self.ontology)
+
+        return self.source_class(**kwargs)
+
+    def to_query(self, obj):
+        mappings = self.mappings
+        search_args = {}
         # If there's a property flagged as primary key, use that one
         if primary_key := next(
             filter(lambda k: mappings[k].is_primary_key(), mappings), None
@@ -246,35 +318,25 @@ class Mapper[S, T]:
                     search_args[key] = val
                 except NotImplementedError:
                     warning(f"to_query method not implemented for {mapping.__class__}")
+        return search_args
 
-        try:
-            classname, ns = self.target_class
-            namespace = self.ontology.get_namespace(ns)
-            target_class = namespace[classname]
-        except (TypeError, ValueError):  # an actual owlready2 class was passed
-            if isinstance(self.target_class, owlready2.ThingClass):
-                target_class = self.target_class
-            else:
-                target_class = self.ontology[self.target_class]
+    def delete_mapping(self, obj: S | T):
+        if obj is None:
+            return
 
-        search_result = self.ontology.search_one(type=target_class, **search_args)
-        if search_result:
-            owl_instance = search_result
+        if isinstance(obj, self.source_class):
+            # search if the wanted instance is already present
+            target_class, search_args = self.to_query(obj)
+            search_result = self.ontology.search_one(type=target_class, **search_args)
+            if search_result:
+                owl_instance = search_result
+        elif isinstance(obj, self.target_class):
+            owl_instance = obj
         else:
-            # otherwise create a new one
-            owl_instance = target_class()
-            for property_name, mapping in self.mappings.items():
-                mapping.to_owl(owl_instance, obj, property_name, self.ontology)
-
-        return owl_instance
-
-    def from_owl(self, owl_instance: T) -> S:
-        if owl_instance is None:
-            return None
-
-        kwargs = {}
+            raise ValueError(
+                "The object passed is neither of source nor target class for mapping."
+            )
 
         for property_name, mapping in self.mappings.items():
-            kwargs[property_name] = mapping.from_owl(owl_instance, self.ontology)
-
-        return self.source_class(**kwargs)
+            mapping.delete(owl_instance, property_name, self.ontology)
+        owlready2.destroy_entity(owl_instance)

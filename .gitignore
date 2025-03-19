@@ -1,1 +1,3 @@
 ogmready/__pycache__/*
+src/ogmready/__pycache__/*
+*.egg-info

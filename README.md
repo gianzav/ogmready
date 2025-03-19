@@ -11,7 +11,7 @@ decoupled.
 First install `owlready2`:
 
 ```
-pip insall owlready2
+pip install owlready2
 ```
 
 Then define an Ontology, using owlready2 or your tool of choice:
@@ -40,6 +40,7 @@ with onto:
         range = [Dog]
 
 ```
+
 You can also add definitions under different namespaces:
 
 ```python
@@ -150,7 +151,7 @@ Collections ontology):
 class Person:
     friends: List[Person]
 
-class PersonMapper:
+class PersonMapper(Mapper):
     def __init__(self, ontology):
         co = "http://purl.org/co/"
         mappings = {
@@ -185,15 +186,14 @@ create new objects inside the Knowledge Graph if they are referenced by others
 but are already storedy. By default, the `Mapper` class tries to search for the
 referenced objects based on the fields that were specified as `primary_key`, but
 in case no `primary_key` is defined, it defaults to a deep search (search of
-*all* object fields inside the Knowledge Graph), which could become slow and in
+_all_ object fields inside the Knowledge Graph), which could become slow and in
 certain cases it could loop if there are circular references.
-
 
 # Missing features (contributions are welcome!)
 
 - [ ] Allowing the use of multiple mappers for a field, e.g. for `friend: Person
-  | Dog` it would be nice to say "use `PersonMapper` or `DogMapper`" based on
-what you find
+| Dog` it would be nice to say "use `PersonMapper` or `DogMapper`" based on
+      what you find
 - [ ] Slim down the definition of new mappers. Using a dict for `mappings` seems
-  a bit wonky to me, it could be done better maybe with class variables to make
-  the code more readable
+      a bit wonky to me, it could be done better maybe with class variables to make
+      the code more readable

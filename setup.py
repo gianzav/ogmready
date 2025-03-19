@@ -1,7 +1,4 @@
 from setuptools import setup
 
-setup(
-    name="ogmready",
-    version="0.1",
-    packages=["ogmready"],
-)
+if __name__ == "__main__":
+    setup()

@@ -77,39 +77,25 @@ def onto():
 
 
 class DogMapper(Mapper):
-    def __init__(self, ontology):
-        mappings = {
-            "name": DataPropertyMapping("entity_name"),
-        }
-        super().__init__(Dog, ("Dog", "http://example.org/"), mappings, ontology)
+    __source_class__ = Dog
+    __target_class__ = ("Dog", "http://example.org/")
+
+    name = DataPropertyMapping("entity_name")
 
 
 class CarMapper(Mapper):
-    def __init__(self, ontology):
-        mappings = {
-            "model": DataPropertyMapping("entity_name"),
-        }
-        super().__init__(Car, ("Car", "http://example.org/"), mappings, ontology)
+    __source_class__ = Car
+    __target_class__ = ("Car", "http://example.org/")
+
+    model = DataPropertyMapping("entity_name")
 
 
 class PersonMapper(Mapper):
-    def __init__(self, ontology):
-        mappings = {
-            "name": DataPropertyMapping("entity_name"),
-            "dog": ObjectPropertyMapping("hasDog", lambda: DogMapper(ontology)),
-        }
-        super().__init__(Person, "Person", mappings, ontology)
+    __source_class__ = Person
+    __target_class__ = ("Person", "http://example.org/")
 
-
-# d = Dog(1, "pluto", {"black", "white"})
-# p = Person(2, "mario", 10, d)
-
-# person_mapper = PersonMapper(onto)
-# dog_mapper = DogMapper(onto)
-
-
-# onto_dog = dog_mapper.to_owl(d)
-# onto_person = person_mapper.to_owl(p)
+    name = DataPropertyMapping("entity_name")
+    dog = ObjectPropertyMapping("hasDog", DogMapper)
 
 
 def test_data_property_mapping_to_owl(onto):
@@ -135,14 +121,7 @@ def test_object_property_mapping_to_owl(onto):
     d = Dog("pluto")
     p = Person("mario", d)
 
-    class DogMapper(Mapper):
-        def __init__(self, ontology):
-            mappings = {
-                "name": DataPropertyMapping("entity_name"),
-            }
-            super().__init__(Dog, ("Dog", "http://example.org/"), mappings, ontology)
-
-    mapping = ObjectPropertyMapping("hasDog", lambda: DogMapper(onto))
+    mapping = ObjectPropertyMapping("hasDog", DogMapper)
 
     onto_person = onto.Person()
     mapping.to_owl(onto_person, p, "dog", onto)
@@ -154,7 +133,7 @@ def test_object_property_mapping_from_owl(onto):
     d = Dog("pluto")
     p = Person("mario", d)
 
-    mapping = ObjectPropertyMapping("hasDog", lambda: DogMapper(onto))
+    mapping = ObjectPropertyMapping("hasDog", DogMapper)
 
     onto_person = onto.Person()
     onto_dog = onto.Dog()
@@ -171,7 +150,7 @@ def test_list_mapping_to_owl(onto):
         "item",
         ("ListItem", "http://example.org/"),
         "itemContent",
-        lambda: CarMapper(onto),
+        CarMapper,
         "sequence_number",
         default_factory=list,
     )
@@ -192,7 +171,7 @@ def test_list_mapping_from_owl(onto):
         "item",
         ("ListItem", "http://example.org/"),
         "itemContent",
-        lambda: CarMapper(onto),
+        CarMapper,
         "sequence_number",
         default_factory=list,
     )

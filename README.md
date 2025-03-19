@@ -72,31 +72,29 @@ And finally the mappers
 ```python
 # Create a subclass of Mapper
 class DogMapper(Mapper):
-    def __init__(self, ontology):
-        # Define the mappings
-        mappings = {
-            # Data property, functional by default
-            "id": DataPropertyMapping("id", primary_key=True),
-            "name": DataPropertyMapping("name"),
+    # Specify the domain and ontology classes to perfom the mapping
+    __source_class__ = Dog
+    __target_class__ = ("Dog", "http://example.org/")
 
-            # functional = False means that the property is a Set
-            # we can pass a tuple (name, namespace) to say that a name is in a
-            # different namespace than the default one
-            "colors": DataPropertyMapping(("color", other_namespace), functional=False)
-        }
-        # Specify the domain and ontology classes to perfom the mapping
-        super().__init__(Dog, "Dog", mappings, ontology)
+    # Define the mappings
+    # Data property, functional by default
+    id = DataPropertyMapping("id", primary_key=True),
+    name = DataPropertyMapping("name"),
+
+    # functional = False means that the property is a Set
+    # we can pass a tuple (name, namespace) to say that a name is in a
+    # different namespace than the default one
+    colors = DataPropertyMapping(("color", other_namespace), functional=False)
 
 class PersonMapper(Mapper):
-    def __init__(self, ontology):
-        mappings = {
-            "id" : DataPropertyMapping("id", primary_key=True),
-            "name": DataPropertyMapping("name"),
-            "age": DataPropertyMapping("age"),
-            # We can reference to other object mappers
-            "dog": ObjectPropertyMapping("hasDog", lambda: DogMapper(ontology))
-        }
-        super().__init__(Person, "Person", mappings, ontology)
+    __source_class__ = Person
+    __target_class__ = ("Person", "http://example.org")
+
+    id = DataPropertyMapping("id", primary_key=True),
+    name = DataPropertyMapping("name"),
+    age = DataPropertyMapping("age"),
+    # We can reference other object mappers
+    dog = ObjectPropertyMapping("hasDog", DogMapper)
 ```
 
 At this point, we can use the methods `from_owl` and `to_owl` of the mappers:
@@ -151,20 +149,19 @@ Collections ontology):
 class Person:
     friends: List[Person]
 
+co = "http://purl.org/co/"
+
 class PersonMapper(Mapper):
-    def __init__(self, ontology):
-        co = "http://purl.org/co/"
-        mappings = {
-            # the parameters are:
-            # - relation to connect list to items (e.g. 'item')
-            # - OWL class of the connecting item (e.g. 'ListItem')
-            # - relation to get to the actual item (e.g. 'itemContent')
-            # - mapper for the item contents
-            # - property to express the ordering of the elements
-            "friends": ListMapping(("item", co), ("ListItem", co), ("itemContent", co),
-                                   lambda: PersonMapper(ontology), ("index", co))
-        }
-        super().__init__(Person, "Person", mappings, ontology)
+    __source_class__ = Person
+    __target_class__ = ("Person", "http://example.org/")
+
+    # the parameters are:
+    # - relation to connect list to items (e.g. 'item')
+    # - OWL class of the connecting item (e.g. 'ListItem')
+    # - relation to get to the actual item (e.g. 'itemContent')
+    # - mapper for the item contents
+    # - property to express the ordering of the elements
+    friends = ListMapping(("item", co), ("ListItem", co), ("itemContent", co), PersonMapper, ("index", co))
 ```
 
 # Defining your own mappings
@@ -194,6 +191,3 @@ certain cases it could loop if there are circular references.
 - [ ] Allowing the use of multiple mappers for a field, e.g. for `friend: Person
 | Dog` it would be nice to say "use `PersonMapper` or `DogMapper`" based on
       what you find
-- [ ] Slim down the definition of new mappers. Using a dict for `mappings` seems
-      a bit wonky to me, it could be done better maybe with class variables to make
-      the code more readable

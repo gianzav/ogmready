@@ -122,7 +122,7 @@ class ObjectPropertyMapping(Mapping):
     def __init__(
         self,
         relation: str | NameWithNamespace,
-        mapper_maker: Callable[[], "Mapper"],
+        mapper_maker: Callable[[owlready2.Ontology], "Mapper"],
         functional=True,
         default_factory: None | Callable = None,
     ):
@@ -133,7 +133,7 @@ class ObjectPropertyMapping(Mapping):
 
     def to_owl(self, owl_instance, obj, property_name, onto, update=False):
         # update doesn't make a difference
-        mapper = self.mapper_maker()
+        mapper = self.mapper_maker(onto)
         relation = resolve_property_name(self.relation, onto)
 
         if self.functional:
@@ -144,7 +144,7 @@ class ObjectPropertyMapping(Mapping):
         setattr(owl_instance, relation, target)
 
     def from_owl(self, owl_instance, onto):
-        mapper = self.mapper_maker()
+        mapper = self.mapper_maker(onto)
         relation = resolve_property_name(self.relation, onto)
 
         if hasattr(owl_instance, relation):
@@ -162,7 +162,7 @@ class ObjectPropertyMapping(Mapping):
         return target
 
     def to_query(self, obj, property_name, onto):
-        mapper = self.mapper_maker()
+        mapper = self.mapper_maker(onto)
         if self.functional:
             target = mapper.to_owl(getattr(obj, property_name))
         else:
@@ -184,7 +184,7 @@ class ListMapping(Mapping):
         relation: str | NameWithNamespace,
         pivot_class: NameWithNamespace,
         connection_to_item: str | NameWithNamespace,
-        item_mapper_maker: Callable[[], "Mapper"],
+        item_mapper_maker: Callable[[owlready2.Ontology], "Mapper"],
         index_property: str | NameWithNamespace = "sequence_number",
         default_factory: None | Callable = None,
     ):
@@ -221,7 +221,7 @@ class ListMapping(Mapping):
             raise ValueError("onto parameter shouldn't be None for ListMapping")
 
         properties = self._resolve_properties(onto)
-        mapper = self.item_mapper_maker()
+        mapper = self.item_mapper_maker(onto)
         elements = getattr(obj, property_name)
 
         if update:
@@ -241,7 +241,7 @@ class ListMapping(Mapping):
 
     def from_owl(self, owl_instance, onto):
         properties = self._resolve_properties(onto)
-        mapper = self.item_mapper_maker()
+        mapper = self.item_mapper_maker(onto)
 
         if hasattr(owl_instance, properties["relation"]):
             pivots = sorted(
@@ -282,17 +282,18 @@ class Mapper[S, T]:
 
     def __init__(
         self,
-        source_class: Type[S],
-        target_class: Type[T] | NameWithNamespace,
-        mappings: Dict[str, Mapping],
         ontology,
     ):
-        self.source_class = source_class
-        if isinstance(target_class, tuple):
-            self.target_class = resolve_class(target_class, ontology)
-        else:
-            self.target_class = target_class
-        self.mappings = mappings
+        self.source_class = self.__class__.__source_class__
+        if isinstance(self.__class__.__target_class__, tuple):
+            self.target_class = resolve_class(self.__class__.__target_class__, ontology)
+
+        self.mappings = {
+            name: mapping
+            for name, mapping in self.__class__.__dict__.items()
+            if isinstance(mapping, Mapping)
+        }
+
         self.ontology = ontology
 
     def to_owl(self, obj: S, update=False) -> T:

@@ -1,5 +1,5 @@
 from typing import Set
-from ogmready.ogmready import *
+from ogmready import Mapper, DataPropertyMapping, ObjectPropertyMapping, ListMapping
 from dataclasses import dataclass
 import owlready2
 
@@ -56,24 +56,22 @@ class Person:
 
 
 class DogMapper(Mapper):
-    def __init__(self, ontology):
-        mappings = {
-            "id": DataPropertyMapping("id", primary_key=True),
-            "name": DataPropertyMapping("name"),
-            "colors": DataPropertyMapping(("color", other_namespace), functional=False),
-        }
-        super().__init__(Dog, "Dog", mappings, ontology)
+    __source_class__ = Dog
+    __target_class__ = ("Dog", "http://example.org/")
+
+    id = DataPropertyMapping("id", primary_key=True)
+    name = DataPropertyMapping("name")
+    colors = DataPropertyMapping(("color", other_namespace), functional=False)
 
 
 class PersonMapper(Mapper):
-    def __init__(self, ontology):
-        mappings = {
-            "id": DataPropertyMapping("id", primary_key=True),
-            "name": DataPropertyMapping("name"),
-            "age": DataPropertyMapping("age"),
-            "dog": ObjectPropertyMapping("hasDog", lambda: DogMapper(ontology)),
-        }
-        super().__init__(Person, "Person", mappings, ontology)
+    __source_class__ = Person
+    __target_class__ = ("Person", "http://example.org/")
+
+    id = DataPropertyMapping("id", primary_key=True)
+    name = DataPropertyMapping("name")
+    age = DataPropertyMapping("age")
+    dog = ObjectPropertyMapping("hasDog", DogMapper)
 
 
 d = Dog(1, "pluto", {"black", "white"})

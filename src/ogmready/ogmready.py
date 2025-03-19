@@ -290,8 +290,13 @@ class Mapper[S, T]:
         self.source_class = source_class
         if isinstance(target_class, tuple):
             self.target_class = resolve_class(target_class, ontology)
-        else:
+        elif isinstance(target_class, owlready2.ThingClass):
             self.target_class = target_class
+        else:
+            raise ValueError(
+                "target_class is neither a name-namespace tuple nor an owlready2 ThingClass"
+            )
+
         self.mappings = mappings
         self.ontology = ontology
 

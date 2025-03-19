@@ -8,10 +8,10 @@ decoupled.
 
 # Quickstart
 
-First install `owlready2`:
+First, install the package:
 
 ```
-pip install owlready2
+pip install ogmready
 ```
 
 Then define an Ontology, using owlready2 or your tool of choice:

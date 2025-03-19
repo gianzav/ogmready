@@ -2,3 +2,6 @@ ogmready/__pycache__/*
 src/ogmready/__pycache__/*
 *.egg-info
 build/*
+dist/*
+*__pycache__
+.vscode/settings.json

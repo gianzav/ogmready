@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0", "owlready2>=0.47"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ogmready"
+version = "0.0.1"
+dependencies=["owlready2>=0.47"]
+authors = [
+  { name="Gianluca Zavan", email="gianlucagianluca18[at]gmail.com" },
+]
+description = "An object-graph mapper based on owlready2"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+
+[project.urls]
+Homepage = "https://github.com/gianzav/ogmready"

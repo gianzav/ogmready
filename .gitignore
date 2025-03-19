@@ -4,3 +4,4 @@ src/ogmready/__pycache__/*
 build/*
 dist/*
 *__pycache__
+.vscode/settings.json

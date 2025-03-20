@@ -1,20 +1,29 @@
 from logging import warning
-from typing import Any, Callable, Dict, Generic, Iterable, Tuple, Type, TypeVar
+from typing import Any, Callable, Generic, Literal, Tuple, TypeVar
 import owlready2
+
 
 type NameWithNamespace = Tuple[str, str]
 
+type Operator = Literal["=", "!=", "IN", "CONTAINS"]
+
 
 def resolve_property_name(
-    name: str | NameWithNamespace, onto: owlready2.Ontology
+    name: str | NameWithNamespace, onto: owlready2.Ontology, iri=False
 ) -> str:
     if isinstance(name, str):
-        result = name
+        if iri:
+            result = onto[name].iri
+        else:
+            result = name
     else:
         try:
             prop, ns = name
             namespace: owlready2.Namespace = onto.get_namespace(ns)
-            result = namespace[prop].name
+            if iri:
+                result = namespace[prop].iri
+            else:
+                result = namespace[prop].name
         except AttributeError as e:
             print(f"Property {prop} not found in namespace {ns}")
             raise e
@@ -199,7 +208,7 @@ class ListMapping(Mapping):
         self.item_mapper_maker = item_mapper_maker
         self.default_factory = default_factory
 
-    def _resolve_properties(self, onto):
+    def _resolve_properties(self, onto, iri=False):
         properties = {
             "relation": self.relation,
             "pivot_class": self.pivot_class,
@@ -208,7 +217,7 @@ class ListMapping(Mapping):
         }
         for prop_name, value in properties.items():
             if prop_name != "pivot_class":
-                properties[prop_name] = resolve_property_name(value, onto)
+                properties[prop_name] = resolve_property_name(value, onto, iri)
             else:
                 properties["pivot_class"] = resolve_class(value, onto)
 
@@ -281,7 +290,7 @@ S = TypeVar("S")
 T = TypeVar("T")
 
 
-class LazyObjectProxy:
+class LazyResult(Generic[T]):
     """
     Proxy object for lazily loading attributes from an OWL individual while
     simulating the domain class `S`.
@@ -315,6 +324,18 @@ class LazyObjectProxy:
         # Cache the resolved value and return it
         self._resolved_fields[name] = resolved_value
         return resolved_value
+
+    def force(self) -> T:
+        for name in self._mapper.mappings:
+            mapping = self._mapper.mappings[name]
+            resolved_value = mapping.from_owl(
+                self._owl_instance, self._ontology, lazy=True
+            )
+
+            # Cache the resolved value and return it
+            self._resolved_fields[name] = resolved_value
+
+        return self._simulated_class(**self._resolved_fields)
 
     def __class__(self):
         """
@@ -351,7 +372,7 @@ class LazyObjectProxy:
         """
         Equality comparison, based on the underlying OWL individual.
         """
-        if isinstance(other, LazyObjectProxy):
+        if isinstance(other, LazyResult):
             return self._owl_instance == other._owl_instance
         return False
 
@@ -417,12 +438,12 @@ class Mapper[S, T]:
 
         return owl_instance
 
-    def from_owl(self, owl_instance: T, lazy=False) -> S:
+    def from_owl(self, owl_instance: T, lazy=False) -> S | LazyResult[S]:
         if owl_instance is None:
             return None
 
         if lazy:
-            return LazyObjectProxy(owl_instance, self, self.ontology)
+            return LazyResult(owl_instance, self, self.ontology)
 
         kwargs = {}
 

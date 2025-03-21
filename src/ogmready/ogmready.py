@@ -330,14 +330,13 @@ def make_lazy(owl_instance, mapper, ontology):
             return resolved_value
 
         def _force(self):
-            print(self._mapper.mappings)
             for name in self._mapper.mappings:
-                print(name)
-                mapping = self._mapper.mappings[name]
-                resolved_value = mapping.from_owl(
-                    self._owl_instance, self._ontology, lazy=False
-                )
-                self._resolved_fields[name] = resolved_value
+                if name not in self._resolved_fields:
+                    mapping = self._mapper.mappings[name]
+                    resolved_value = mapping.from_owl(
+                        self._owl_instance, self._ontology, lazy=False
+                    )
+                    self._resolved_fields[name] = resolved_value
             return self._simulated_class(**self._resolved_fields)
 
         def __class__(self):
@@ -381,6 +380,9 @@ def make_lazy(owl_instance, mapper, ontology):
                 return self._force() == other
 
             return False
+
+        def __hash__(self):
+            return hash(self._owl_instance)
 
     return LazyResult(owl_instance, mapper, ontology)
 

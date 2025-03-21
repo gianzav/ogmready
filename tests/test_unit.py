@@ -1,6 +1,6 @@
 import pytest
 from typing import List, Set
-from ogmready.ogmready import *
+from ogmready import *
 from dataclasses import dataclass, field
 import owlready2
 
@@ -186,3 +186,57 @@ def test_list_mapping_from_owl(onto):
         onto_person.item.append(item)
 
     assert cars == mapping.from_owl(onto_person, onto)
+
+
+def test_lazy_result_force(onto):
+    class PersonMapper(Mapper):
+        __source_class__ = Person
+        __target_class__ = ("Person", "http://example.org/")
+
+        name = DataPropertyMapping("entity_name")
+        dog = ObjectPropertyMapping("hasDog", DogMapper)
+        cars = ListMapping(
+            "item",
+            ("ListItem", "http://example.org/"),
+            "itemContent",
+            CarMapper,
+            "sequence_number",
+            default_factory=list,
+        )
+
+    d = Dog("pippo")
+    car = Car("ferrari")
+    p = Person("mario", d, [car])
+
+    person_mapper = PersonMapper(onto)
+    onto_person = person_mapper.to_owl(p)
+    person_lazy = person_mapper.from_owl(onto_person, lazy=True)
+
+    assert person_lazy._force() == p
+
+
+def test_lazy_from_owl(onto):
+    class PersonMapper(Mapper):
+        __source_class__ = Person
+        __target_class__ = ("Person", "http://example.org/")
+
+        name = DataPropertyMapping("entity_name")
+        dog = ObjectPropertyMapping("hasDog", DogMapper)
+        cars = ListMapping(
+            "item",
+            ("ListItem", "http://example.org/"),
+            "itemContent",
+            CarMapper,
+            "sequence_number",
+            default_factory=list,
+        )
+
+    d = Dog("pippo")
+    car = Car("ferrari")
+    p = Person("mario", d, [car])
+
+    person_mapper = PersonMapper(onto)
+    onto_person = person_mapper.to_owl(p)
+    person_lazy = person_mapper.from_owl(onto_person, lazy=True)
+
+    assert person_lazy == p

@@ -1,5 +1,5 @@
 from logging import warning
-from typing import Any, Callable, Generic, Literal, Tuple, TypeVar
+from typing import Any, Callable, Literal, Tuple, TypeVar, override
 import owlready2
 
 
@@ -290,43 +290,36 @@ S = TypeVar("S")
 T = TypeVar("T")
 
 
-class LazyResult(Generic[T]):
-    """
-    Proxy object for lazily loading attributes from an OWL individual while
-    simulating the domain class `S`.
-    """
-
-    def __init__(self, owl_instance, mapper, ontology):
-        self._owl_instance = owl_instance
-        self._mapper = mapper
-        self._ontology = ontology
-        self._resolved_fields = {}
-        self._simulated_class = mapper.source_class  # The simulated class
-
-    def __getattr__(self, name):
+def make_lazy(owl_instance, mapper, ontology):
+    class LazyResult(mapper.source_class):
         """
-        Lazily resolve the field when it is accessed.
+        Proxy object for lazily loading attributes from an OWL individual while
+        simulating the domain class `S`.
         """
-        # If the field has already been resolved, return it
-        if name in self._resolved_fields:
-            return self._resolved_fields[name]
 
-        # If the field is not in the mapper's mappings, raise an AttributeError
-        if name not in self._mapper.mappings:
-            raise AttributeError(
-                f"'{self._simulated_class.__name__}' object has no attribute '{name}'"
-            )
+        def __init__(self, owl_instance, mapper, ontology):
+            self._owl_instance = owl_instance
+            self._mapper = mapper
+            self._ontology = ontology
+            self._resolved_fields = {}
+            self._simulated_class = mapper.source_class  # The simulated class
 
-        # Resolve the field using the appropriate mapping
-        mapping = self._mapper.mappings[name]
-        resolved_value = mapping.from_owl(self._owl_instance, self._ontology, lazy=True)
+        @override
+        def __getattr__(self, name):
+            """
+            Lazily resolve the field when it is accessed.
+            """
+            # If the field has already been resolved, return it
+            if name in self._resolved_fields:
+                return self._resolved_fields[name]
 
-        # Cache the resolved value and return it
-        self._resolved_fields[name] = resolved_value
-        return resolved_value
+            # If the field is not in the mapper's mappings, raise an AttributeError
+            if name not in self._mapper.mappings:
+                raise AttributeError(
+                    f"'{self._simulated_class.__name__}' object has no attribute '{name}'"
+                )
 
-    def force(self) -> T:
-        for name in self._mapper.mappings:
+            # Resolve the field using the appropriate mapping
             mapping = self._mapper.mappings[name]
             resolved_value = mapping.from_owl(
                 self._owl_instance, self._ontology, lazy=True
@@ -334,63 +327,62 @@ class LazyResult(Generic[T]):
 
             # Cache the resolved value and return it
             self._resolved_fields[name] = resolved_value
+            return resolved_value
 
-        return self._simulated_class(**self._resolved_fields)
+        def _force(self):
+            print(self._mapper.mappings)
+            for name in self._mapper.mappings:
+                print(name)
+                mapping = self._mapper.mappings[name]
+                resolved_value = mapping.from_owl(
+                    self._owl_instance, self._ontology, lazy=False
+                )
+                self._resolved_fields[name] = resolved_value
+            return self._simulated_class(**self._resolved_fields)
 
-    def __class__(self):
-        """
-        Simulate the class of the domain object.
-        """
-        return self._simulated_class
+        def __class__(self):
+            """
+            Simulate the class of the domain object.
+            """
+            return self._simulated_class
 
-    def __dir__(self):
-        """
-        Simulate the attributes of the domain object for introspection.
-        """
-        return list(self._mapper.mappings.keys())
+        def __dir__(self):
+            """
+            Simulate the attributes of the domain object for introspection.
+            """
+            return list(self._mapper.mappings.keys())
 
-    def __repr__(self):
-        """
-        Simulate a meaningful representation of the object.
-        """
-        return f"<Lazy {self._simulated_class.__name__} proxy for {self._owl_instance}>"
+        def __repr__(self):
+            """
+            Simulate a meaningful representation of the object.
+            """
+            return f"<Lazy {self._simulated_class.__name__} proxy for {self._owl_instance}>"
 
-    def __setattr__(self, name, value):
-        """
-        Allow setting attributes dynamically, with special handling for proxy internals.
-        """
-        # Protect internal attributes
-        if name.startswith("_"):
-            super().__setattr__(name, value)
-        elif name in self._mapper.mappings:
-            # If the attribute is part of the mapped fields, resolve it lazily
-            self._resolved_fields[name] = value
-        else:
-            raise AttributeError(f"Cannot dynamically set unmapped attribute '{name}'")
+        def __setattr__(self, name, value):
+            """
+            Allow setting attributes dynamically, with special handling for proxy internals.
+            """
+            # Protect internal attributes
+            if name.startswith("_"):
+                super().__setattr__(name, value)
+            elif name in self._mapper.mappings:
+                # If the attribute is part of the mapped fields, resolve it lazily
+                self._resolved_fields[name] = value
+            else:
+                raise AttributeError(
+                    f"Cannot dynamically set unmapped attribute '{name}'"
+                )
 
-    def __eq__(self, other):
-        """
-        Equality comparison, based on the underlying OWL individual.
-        """
-        if isinstance(other, LazyResult):
-            return self._owl_instance == other._owl_instance
-        return False
+        def __eq__(self, other):
+            """
+            Equality comparison, based on the underlying OWL individual.
+            """
+            if isinstance(other, self._simulated_class):
+                return self._force() == other
 
-    def __getstate__(self):
-        """
-        Make the object serializable.
-        """
-        return {
-            "owl_instance": self._owl_instance,
-            "resolved_fields": self._resolved_fields,
-        }
+            return False
 
-    def __setstate__(self, state):
-        """
-        Restore the object during deserialization.
-        """
-        self._owl_instance = state["owl_instance"]
-        self._resolved_fields = state["resolved_fields"]
+    return LazyResult(owl_instance, mapper, ontology)
 
 
 class Mapper[S, T]:
@@ -438,12 +430,12 @@ class Mapper[S, T]:
 
         return owl_instance
 
-    def from_owl(self, owl_instance: T, lazy=False) -> S | LazyResult[S]:
+    def from_owl(self, owl_instance: T, lazy=False) -> S:
         if owl_instance is None:
             return None
 
         if lazy:
-            return LazyResult(owl_instance, self, self.ontology)
+            return make_lazy(owl_instance, self, self.ontology)
 
         kwargs = {}
 

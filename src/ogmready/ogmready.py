@@ -1,6 +1,7 @@
 from logging import warning
 from typing import Any, Callable, Literal, Tuple, TypeVar, override
 import owlready2
+import inflection
 
 
 type NameWithNamespace = Tuple[str, str]
@@ -23,7 +24,12 @@ def resolve_property_name(
             if iri:
                 result = namespace[prop].iri
             else:
-                result = namespace[prop].name
+                ns_prop = namespace[prop]
+                # generate a special python name for the property
+                ns_prop.python_name = "ogmready__" + inflection.underscore(
+                    inflection.parameterize(ns_prop.iri)
+                )
+                result = ns_prop.python_name
         except AttributeError as e:
             print(f"Property {prop} not found in namespace {ns}")
             raise e

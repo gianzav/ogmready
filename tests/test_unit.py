@@ -4,6 +4,8 @@ from ogmready import *
 from dataclasses import dataclass, field
 import owlready2
 
+from ogmready.ogmready import resolve_property_name
+
 
 @dataclass
 class Dog:
@@ -240,3 +242,16 @@ def test_lazy_from_owl(onto):
     person_lazy = person_mapper.from_owl(onto_person, lazy=True)
 
     assert person_lazy == p
+
+
+def test_resolve_property_name(onto):
+    prop_name = resolve_property_name(("entity_name", "http://example.org/"), onto)
+    assert prop_name == "ogmready__http_example_org_entity_name"
+
+
+def test_access_property_with_generated_property_name(onto):
+    p = onto.Person()
+    p.entity_name = "pippo"  # before property renaming, accessed with entity_name
+    prop_name = resolve_property_name(("entity_name", "http://example.org/"), onto)
+
+    assert getattr(p, prop_name) == "pippo"

@@ -25,11 +25,11 @@ def resolve_property_name(
                 result = namespace[prop].iri
             else:
                 ns_prop = namespace[prop]
-                # generate a special python name for the property
-                ns_prop.python_name = "ogmready__" + inflection.underscore(
+                # use a special python name for the property
+                # the ontology needs to include the python_name annotation in this format
+                result = "ogmready__" + inflection.underscore(
                     inflection.parameterize(ns_prop.iri)
                 )
-                result = ns_prop.python_name
         except AttributeError as e:
             print(f"Property {prop} not found in namespace {ns}")
             raise e
